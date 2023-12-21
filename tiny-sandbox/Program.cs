@@ -8,6 +8,6 @@ internal class Program
     {
         Log.Init();
 
-        await RecursiveResolver.Resolve("www.example.com");
+        Console.WriteLine(await RecursiveResolver.Resolve("www.example.com"));
     }
 }

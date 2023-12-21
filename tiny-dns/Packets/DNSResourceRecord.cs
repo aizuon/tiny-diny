@@ -43,22 +43,23 @@ public record DNSResourceRecord : IDeserializable<DNSResourceRecord>
         if (!buffer.ReadRaw(ref _rdata, _rdLength))
             return null;
         authority.RData = _rdata;
-        authority.ParseRData();
+        buffer.ReadOffset -= _rdLength;
+        authority.ParseRData(buffer);
+        if (authority.ParsedRData == null)
+            buffer.ReadOffset += _rdLength;
 
         return authority;
     }
 
-    private void ParseRData()
+    private void ParseRData(BinaryBuffer buffer)
     {
-        var rdataBuffer = new BinaryBuffer(RData);
-
         switch (Type)
         {
             case 1:
-                ParsedRData = ParseARecord(rdataBuffer);
+                ParsedRData = ParseARecord(buffer);
                 break;
             case 2:
-                ParsedRData = ParseNSRecord(rdataBuffer);
+                ParsedRData = ParseNSRecord(buffer);
                 break;
         }
     }
