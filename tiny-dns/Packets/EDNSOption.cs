@@ -8,7 +8,7 @@ public record EDNSOption : ISerializable, IDeserializable<EDNSOption>
     public byte ExtendedRCode { get; set; }
     public byte Version { get; set; }
     public ushort Flags { get; set; }
-    public List<EDNSOptionData> Options { get; set; } = new List<EDNSOptionData>();
+    public List<EDNSOptionData> Options { get; set; } = [];
 
     public static EDNSOption Deserialize(BinaryBuffer buffer)
     {
