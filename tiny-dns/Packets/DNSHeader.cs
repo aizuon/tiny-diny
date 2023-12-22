@@ -1,3 +1,5 @@
+using TinyDNS.Serialization;
+
 namespace TinyDNS.Packets;
 
 public record DNSHeader : ISerializable, IDeserializable<DNSHeader>
@@ -20,14 +22,10 @@ public record DNSHeader : ISerializable, IDeserializable<DNSHeader>
     {
         var header = new DNSHeader();
 
-        ushort id = 0;
-        if (!buffer.Read(ref id))
-            return null;
+        ushort id = buffer.Read<ushort>();
 
         header.Id = id;
-        byte[] flagsBuffer = Array.Empty<byte>();
-        if (!buffer.ReadRaw(ref flagsBuffer, 2))
-            return null;
+        byte[] flagsBuffer = buffer.ReadRaw<byte>(2);
 
         var flags = new BitBuffer(flagsBuffer);
         header.QR = flags.Read<byte>(1);
@@ -39,25 +37,13 @@ public record DNSHeader : ISerializable, IDeserializable<DNSHeader>
         header.Z = flags.Read<byte>(3);
         header.RCode = flags.Read<byte>(4);
 
-        ushort questions = 0;
-        if (!buffer.Read(ref questions))
-            return null;
-        header.Questions = questions;
+        header.Questions = buffer.Read<ushort>();
 
-        ushort answerRRs = 0;
-        if (!buffer.Read(ref answerRRs))
-            return null;
-        header.AnswerRRs = answerRRs;
+        header.AnswerRRs = buffer.Read<ushort>();
 
-        ushort authorityRRs = 0;
-        if (!buffer.Read(ref authorityRRs))
-            return null;
-        header.AuthorityRRs = authorityRRs;
+        header.AuthorityRRs = buffer.Read<ushort>();
 
-        ushort additionalRRs = 0;
-        if (!buffer.Read(ref additionalRRs))
-            return null;
-        header.AdditionalRRs = additionalRRs;
+        header.AdditionalRRs = buffer.Read<ushort>();
 
         return header;
     }

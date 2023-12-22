@@ -1,3 +1,5 @@
+using TinyDNS.Serialization;
+
 namespace TinyDNS.Packets;
 
 public record EDNSOptionData : ISerializable, IDeserializable<EDNSOptionData>
@@ -9,19 +11,11 @@ public record EDNSOptionData : ISerializable, IDeserializable<EDNSOptionData>
     {
         var optionData = new EDNSOptionData();
 
-        ushort code = 0;
-        if (!buffer.Read(ref code))
-            return null;
-        optionData.Code = code;
+        optionData.Code = buffer.Read<ushort>();
 
-        ushort dataLength = 0;
-        if (!buffer.Read(ref dataLength))
-            return null;
+        ushort dataLength = buffer.Read<ushort>();
 
-        byte[] data = new byte[dataLength];
-        if (!buffer.ReadRaw(ref data, dataLength))
-            return null;
-        optionData.Data = data;
+        optionData.Data = buffer.ReadRaw<byte>(dataLength);
 
         return optionData;
     }

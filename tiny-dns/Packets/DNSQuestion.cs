@@ -1,3 +1,5 @@
+using TinyDNS.Serialization;
+
 namespace TinyDNS.Packets;
 
 public record DNSQuestion : ISerializable, IDeserializable<DNSQuestion>
@@ -10,20 +12,11 @@ public record DNSQuestion : ISerializable, IDeserializable<DNSQuestion>
     {
         var question = new DNSQuestion();
 
-        string qname = string.Empty;
-        if (!buffer.ReadDomainName(ref qname))
-            return null;
-        question.QName = qname;
+        question.QName = buffer.ReadDomainName();
 
-        ushort qtype = 0;
-        if (!buffer.Read(ref qtype))
-            return null;
-        question.QType = qtype;
+        question.QType = buffer.Read<ushort>();
 
-        ushort qclass = 0;
-        if (!buffer.Read(ref qclass))
-            return null;
-        question.QClass = qclass;
+        question.QClass = buffer.Read<ushort>();
 
         return question;
     }

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Serilog;
 using Serilog.Core;
 using TinyDNS.Packets;
+using TinyDNS.Serialization;
 
 namespace TinyDNS;
 
@@ -16,12 +17,12 @@ public static class RecursiveResolver
 
     private static readonly MemoryCache Cache = new MemoryCache(new MemoryCacheOptions());
 
-    public static Task<IPAddress> Resolve(string qname)
+    public static ValueTask<IPAddress> Resolve(string qname)
     {
         return ResolveRecursive(qname, RootServer);
     }
 
-    private static async Task<IPAddress> ResolveRecursive(string qname, string server)
+    private static async ValueTask<IPAddress> ResolveRecursive(string qname, string server)
     {
         if (Cache.TryGetValue(qname, out IPAddress cachedIpAddress))
         {

@@ -1,7 +1,8 @@
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Text;
 
-namespace TinyDNS;
+namespace TinyDNS.Serialization;
 
 public class BinaryBuffer
 {
@@ -23,7 +24,7 @@ public class BinaryBuffer
     public uint ReadOffset { get; set; }
     public uint WriteOffset { get; set; }
 
-    public unsafe void Write<T>(T obj) where T : unmanaged
+    public unsafe void Write<T>(T obj) where T : unmanaged, IBinaryNumber<T>
     {
         lock (_mutex)
         {
@@ -31,17 +32,16 @@ public class BinaryBuffer
             GrowIfNeeded(length);
             fixed (byte* b = Buffer)
             {
-                System.Buffer.MemoryCopy(&obj, b + WriteOffset, Buffer.Length - WriteOffset, length);
+                obj = Mem.ToBigEndian(obj);
 
-                if (BitConverter.IsLittleEndian)
-                    Array.Reverse(Buffer, (int)WriteOffset, (int)length);
+                System.Buffer.MemoryCopy(&obj, b + WriteOffset, Buffer.Length - WriteOffset, length);
             }
 
             WriteOffset += length;
         }
     }
 
-    public void WriteRaw<T>(T[] obj) where T : unmanaged
+    public void WriteRaw<T>(T[] obj) where T : unmanaged, IBinaryNumber<T>
     {
         lock (_mutex)
         {
@@ -78,7 +78,7 @@ public class BinaryBuffer
         }
     }
 
-    public unsafe bool Read<T>(ref T obj) where T : unmanaged
+    public unsafe T Read<T>() where T : unmanaged, IBinaryNumber<T>
     {
         lock (_mutex)
         {
@@ -86,35 +86,26 @@ public class BinaryBuffer
 
             uint finalOffset = ReadOffset + length;
             if (Buffer.Length < finalOffset)
-                return false;
+                throw new ArgumentOutOfRangeException();
 
-            fixed (T* o = &obj)
+            var obj = T.Zero;
+            var o = &obj;
             fixed (byte* b = Buffer)
             {
                 byte* p = (byte*)o;
 
                 System.Buffer.MemoryCopy(b + ReadOffset, p, length, length);
 
-                if (BitConverter.IsLittleEndian)
-                {
-                    byte* pStart = p;
-                    byte* pEnd = p + length - 1;
-                    for (int i = 0; i < length / 2; i++)
-                    {
-                        byte temp = *pStart;
-                        *pStart++ = *pEnd;
-                        *pEnd-- = temp;
-                    }
-                }
+                obj = Mem.ToBigEndian(obj);
             }
 
             ReadOffset = finalOffset;
 
-            return true;
+            return obj;
         }
     }
 
-    public bool ReadRaw<T>(ref T[] obj, uint count) where T : unmanaged
+    public T[] ReadRaw<T>(uint count) where T : unmanaged, IBinaryNumber<T>
     {
         lock (_mutex)
         {
@@ -122,47 +113,39 @@ public class BinaryBuffer
 
             uint finalOffset = ReadOffset + length;
             if (Buffer.Length < finalOffset)
-                return false;
+                throw new ArgumentOutOfRangeException();
 
-            obj = new T[count];
+            var obj = new T[count];
             for (uint i = 0; i < count; i++)
-                if (!Read(ref obj[i]))
-                    return false;
+                obj[i] = Read<T>();
 
-            return true;
+            return obj;
         }
     }
 
-    public bool Read(ref string obj)
+    public string ReadString()
     {
         lock (_mutex)
         {
-            byte size = 0;
-            if (!Read(ref size))
-                return false;
+            byte size = Read<byte>();
 
             uint length = (uint)(size * sizeof(byte));
 
             uint finalOffset = ReadOffset + length;
             if (Buffer.Length < finalOffset)
-                return false;
+                throw new ArgumentOutOfRangeException();
 
             byte[] ascii = new byte[length];
             for (uint i = 0; i < size; i++)
-            {
-                byte c = 0x00;
-                if (!Read(ref c))
-                    return false;
-                ascii[i] = c;
-            }
+                ascii[i] = Read<byte>();
 
-            obj = Encoding.ASCII.GetString(ascii);
+            string obj = Encoding.ASCII.GetString(ascii);
 
-            return true;
+            return obj;
         }
     }
 
-    public bool ReadDomainName(ref string obj)
+    public string ReadDomainName()
     {
         lock (_mutex)
         {
@@ -171,9 +154,7 @@ public class BinaryBuffer
 
             while (!endOfLabels)
             {
-                byte lengthOrPointer = 0;
-                if (!Read(ref lengthOrPointer))
-                    return false;
+                byte lengthOrPointer = Read<byte>();
 
                 if (lengthOrPointer == 0)
                 {
@@ -181,16 +162,12 @@ public class BinaryBuffer
                 }
                 else if ((lengthOrPointer & 0xC0) == 0xC0)
                 {
-                    byte secondByte = 0;
-                    if (!Read(ref secondByte))
-                        return false;
+                    byte secondByte = Read<byte>();
 
                     uint offset = (uint)(((lengthOrPointer & 0x3F) << 8) | secondByte);
                     uint currentPosition = ReadOffset;
                     ReadOffset = offset;
-                    string label = string.Empty;
-                    if (!ReadDomainName(ref label))
-                        return false;
+                    string label = ReadDomainName();
                     labels.Add(label);
                     ReadOffset = currentPosition;
                     endOfLabels = true;
@@ -198,16 +175,14 @@ public class BinaryBuffer
                 else
                 {
                     ReadOffset--;
-                    string label = string.Empty;
-                    if (!Read(ref label))
-                        return false;
+                    string label = ReadString();
                     labels.Add(label);
                 }
             }
 
-            obj = string.Join('.', labels);
+            string obj = string.Join('.', labels);
 
-            return true;
+            return obj;
         }
     }
 

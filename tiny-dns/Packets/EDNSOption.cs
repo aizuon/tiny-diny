@@ -1,3 +1,5 @@
+using TinyDNS.Serialization;
+
 namespace TinyDNS.Packets;
 
 public record EDNSOption : ISerializable, IDeserializable<EDNSOption>
@@ -12,30 +14,23 @@ public record EDNSOption : ISerializable, IDeserializable<EDNSOption>
     {
         var ednsOption = new EDNSOption();
 
-        byte name = 0;
-        if (!buffer.Read(ref name) || name != 0)
+        byte name = buffer.Read<byte>();
+        if (name != 0)
             return null;
 
-        ushort type = 0;
-        if (!buffer.Read(ref type) || type != 41)
+        ushort type = buffer.Read<ushort>();
+        if (type != 41)
             return null;
 
-        ushort udpSize = 0;
-        if (!buffer.Read(ref udpSize))
-            return null;
-        ednsOption.UDPSize = udpSize;
+        ednsOption.UDPSize = buffer.Read<ushort>();
 
-        uint ttl = 0;
-        if (!buffer.Read(ref ttl))
-            return null;
+        uint ttl = buffer.Read<uint>();
 
         ednsOption.ExtendedRCode = (byte)((ttl >> 24) & 0xFF);
         ednsOption.Version = (byte)((ttl >> 16) & 0xFF);
         ednsOption.Flags = (ushort)(ttl & 0xFFFF);
 
-        ushort rdLength = 0;
-        if (!buffer.Read(ref rdLength))
-            return null;
+        ushort rdLength = buffer.Read<ushort>();
 
         if (rdLength > 0)
         {

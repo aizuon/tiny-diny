@@ -1,3 +1,5 @@
+using TinyDNS.Serialization;
+
 namespace TinyDNS.Packets;
 
 public record DNSQuery : ISerializable

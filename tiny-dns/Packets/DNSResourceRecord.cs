@@ -1,4 +1,5 @@
 using System.Net;
+using TinyDNS.Serialization;
 
 namespace TinyDNS.Packets;
 
@@ -15,38 +16,20 @@ public record DNSResourceRecord : IDeserializable<DNSResourceRecord>
     {
         var authority = new DNSResourceRecord();
 
-        string _name = string.Empty;
-        if (!buffer.ReadDomainName(ref _name))
-            return null;
-        authority.Name = _name;
+        authority.Name = buffer.ReadDomainName();
+        ;
+        authority.Type = buffer.Read<ushort>();
 
-        ushort _type = 0;
-        if (!buffer.Read(ref _type))
-            return null;
-        authority.Type = _type;
+        authority.Class = buffer.Read<ushort>();
 
-        ushort _class = 0;
-        if (!buffer.Read(ref _class))
-            return null;
-        authority.Class = _class;
+        authority.TTL = buffer.Read<uint>();
 
-        uint _ttl = 0;
-        if (!buffer.Read(ref _ttl))
-            return null;
-        authority.TTL = _ttl;
-
-        ushort _rdLength = 0;
-        if (!buffer.Read(ref _rdLength))
-            return null;
-
-        byte[] _rdata = new byte[_rdLength];
-        if (!buffer.ReadRaw(ref _rdata, _rdLength))
-            return null;
-        authority.RData = _rdata;
-        buffer.ReadOffset -= _rdLength;
+        ushort rdLength = buffer.Read<ushort>();
+        authority.RData = buffer.ReadRaw<byte>(rdLength);
+        buffer.ReadOffset -= rdLength;
         authority.ParseRData(buffer);
         if (authority.ParsedRData == null)
-            buffer.ReadOffset += _rdLength;
+            buffer.ReadOffset += rdLength;
 
         return authority;
     }
@@ -66,18 +49,14 @@ public record DNSResourceRecord : IDeserializable<DNSResourceRecord>
 
     private static IPAddress ParseARecord(BinaryBuffer buffer)
     {
-        byte[] octets = Array.Empty<byte>();
-        if (!buffer.ReadRaw(ref octets, 4))
-            return null;
+        byte[] octets = buffer.ReadRaw<byte>(4);
 
         return new IPAddress(octets);
     }
 
     private static string ParseNSRecord(BinaryBuffer buffer)
     {
-        string nsDomainName = string.Empty;
-        if (!buffer.ReadDomainName(ref nsDomainName))
-            return null;
+        string nsDomainName = buffer.ReadDomainName();
 
         return nsDomainName;
     }
