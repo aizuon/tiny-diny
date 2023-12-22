@@ -48,23 +48,41 @@ public class BinaryBuffer
 
     public uint ReadOffset
     {
-        get => _readOffset;
+        get
+        {
+            lock (_mutex)
+            {
+                return _readOffset;
+            }
+        }
         set
         {
-            if (value > Length)
-                throw new ArgumentOutOfRangeException();
-            _readOffset = value;
+            lock (_mutex)
+            {
+                if (value > Length)
+                    throw new ArgumentOutOfRangeException();
+                _readOffset = value;
+            }
         }
     }
 
     public uint WriteOffset
     {
-        get => _writeOffset;
+        get
+        {
+            lock (_mutex)
+            {
+                return _writeOffset;
+            }
+        }
         set
         {
-            if (value > Length)
-                throw new ArgumentOutOfRangeException();
-            _writeOffset = value;
+            lock (_mutex)
+            {
+                if (value > Length)
+                    throw new ArgumentOutOfRangeException();
+                _writeOffset = value;
+            }
         }
     }
 
@@ -72,14 +90,14 @@ public class BinaryBuffer
     {
         lock (_mutex)
         {
-            int length = Unsafe.SizeOf<T>();
-            GrowIfNeeded((uint)length);
+            uint length = (uint)Unsafe.SizeOf<T>();
+            GrowIfNeeded(length);
 
-            var bufferSpan = _buffer.AsSpan((int)_writeOffset, length);
+            var bufferSpan = _buffer.AsSpan((int)_writeOffset, (int)length);
             obj = Mem.ToBigEndian(obj);
             MemoryMarshal.Write(bufferSpan, in obj);
 
-            _writeOffset += (uint)length;
+            _writeOffset += length;
             Length = Math.Max(Length, _writeOffset);
         }
     }
@@ -88,8 +106,8 @@ public class BinaryBuffer
     {
         lock (_mutex)
         {
-            int sizeOfT = Unsafe.SizeOf<T>();
-            uint length = (uint)obj.Length * (uint)sizeOfT;
+            uint sizeOfT = (uint)Unsafe.SizeOf<T>();
+            uint length = (uint)obj.Length * sizeOfT;
             GrowIfNeeded(length);
 
             var targetSpan = new Span<byte>(_buffer, (int)_writeOffset, (int)length);
@@ -97,7 +115,7 @@ public class BinaryBuffer
             for (int i = 0; i < obj.Length; i++)
             {
                 var value = Mem.ToBigEndian(obj[i]);
-                MemoryMarshal.Write(targetSpan.Slice(i * sizeOfT, sizeOfT), in value);
+                MemoryMarshal.Write(targetSpan.Slice(i * (int)sizeOfT, (int)sizeOfT), in value);
             }
 
             _writeOffset += length;
@@ -135,16 +153,16 @@ public class BinaryBuffer
     {
         lock (_mutex)
         {
-            int length = Unsafe.SizeOf<T>();
+            uint length = (uint)Unsafe.SizeOf<T>();
 
             if (_buffer.Length < _readOffset + length)
                 throw new ArgumentOutOfRangeException();
 
-            var bufferSpan = _buffer.AsSpan((int)_readOffset, length);
+            var bufferSpan = _buffer.AsSpan((int)_readOffset, (int)length);
             var value = MemoryMarshal.Read<T>(bufferSpan);
             value = Mem.ToBigEndian(value);
 
-            _readOffset += (uint)length;
+            _readOffset += length;
 
             return value;
         }
@@ -154,8 +172,8 @@ public class BinaryBuffer
     {
         lock (_mutex)
         {
-            int sizeOfT = Unsafe.SizeOf<T>();
-            uint length = count * (uint)sizeOfT;
+            uint sizeOfT = (uint)Unsafe.SizeOf<T>();
+            uint length = count * sizeOfT;
 
             if (_buffer.Length - _readOffset < length)
                 throw new ArgumentOutOfRangeException();
@@ -163,13 +181,13 @@ public class BinaryBuffer
             var result = new T[count];
             var byteSpan = new Span<byte>(_buffer, (int)_readOffset, (int)length);
 
+            var resultSpan = MemoryMarshal.Cast<byte, T>(byteSpan);
+
             for (int i = 0; i < count; i++)
-            {
-                var value = MemoryMarshal.Read<T>(byteSpan[(i * sizeOfT)..]);
-                result[i] = Mem.ToBigEndian(value);
-            }
+                result[i] = Mem.ToBigEndian(resultSpan[i]);
 
             _readOffset += length;
+
             return result;
         }
     }
@@ -210,16 +228,16 @@ public class BinaryBuffer
                     byte secondByte = Read<byte>();
 
                     uint offset = (uint)(((lengthOrPointer & 0x3F) << 8) | secondByte);
-                    uint currentPosition = ReadOffset;
-                    ReadOffset = offset;
+                    uint currentPosition = _readOffset;
+                    _readOffset = offset;
                     string label = ReadDomainName();
                     labels.Add(label);
-                    ReadOffset = currentPosition;
+                    _readOffset = currentPosition;
                     endOfLabels = true;
                 }
                 else
                 {
-                    ReadOffset--;
+                    _readOffset--;
                     string label = ReadString();
                     labels.Add(label);
                 }
@@ -233,13 +251,11 @@ public class BinaryBuffer
 
     private void GrowIfNeeded(uint writeLength)
     {
-        uint requiredLength = WriteOffset + writeLength;
+        uint requiredLength = _writeOffset + writeLength;
         if (Capacity < requiredLength)
         {
             uint newCapacity = Math.Max(Capacity * 2, requiredLength);
-            byte[] tmp = _buffer;
-            Array.Resize(ref tmp, (int)newCapacity);
-            _buffer = tmp;
+            Array.Resize(ref _buffer, (int)newCapacity);
             Length = requiredLength;
             Capacity = newCapacity;
         }

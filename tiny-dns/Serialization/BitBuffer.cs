@@ -110,7 +110,7 @@ public class BitBuffer
 
         _bufferLengthInBits -= countOfBits;
 
-        byte obj = 0;
+        byte obj;
         if (_bitsInPartialByte >= countOfBits)
         {
             uint rightShiftPartialByteBy = 8 - countOfBits;

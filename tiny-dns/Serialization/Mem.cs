@@ -11,11 +11,14 @@ public static class Mem
         if (!BitConverter.IsLittleEndian)
             return obj;
 
-        int size = Unsafe.SizeOf<T>();
-        Span<byte> bytes = stackalloc byte[size];
+        uint size = (uint)Unsafe.SizeOf<T>();
+        if (size == 1)
+            return obj;
+
+        Span<byte> bytes = stackalloc byte[(int)size];
         ref byte objRef = ref Unsafe.As<T, byte>(ref obj);
 
-        Unsafe.CopyBlockUnaligned(ref MemoryMarshal.GetReference(bytes), ref objRef, (uint)size);
+        Unsafe.CopyBlockUnaligned(ref MemoryMarshal.GetReference(bytes), ref objRef, size);
 
         bytes.Reverse();
 

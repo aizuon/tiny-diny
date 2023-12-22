@@ -31,7 +31,7 @@ public static class Log
 
 public sealed class ContextEnricher : ILogEventEnricher
 {
-    private const int MaxLength = 18;
+    private const int MaxLength = 24;
     private const string EmptyContext = "NULL";
 
     public void Enrich(LogEvent logEvent, ILogEventPropertyFactory propertyFactory)
