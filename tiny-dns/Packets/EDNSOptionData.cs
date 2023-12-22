@@ -28,7 +28,7 @@ public record EDNSOptionData : ISerializable, IDeserializable<EDNSOptionData>
 
         buffer.Write((ushort)Data.Length);
 
-        buffer.WriteRaw(Data);
+        buffer.WriteRaw(Data.AsSpan());
 
         return buffer;
     }

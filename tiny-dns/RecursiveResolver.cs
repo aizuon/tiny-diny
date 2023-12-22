@@ -40,7 +40,7 @@ public static class RecursiveResolver
 
         using var client = new UdpClient();
         client.Connect(IPAddress.Parse(server), 53);
-        await client.SendAsync(req.Buffer, req.Buffer.Length);
+        await client.SendAsync(req.Buffer.AsMemory());
         var res = await client.ReceiveAsync();
 
         var buffer = new BinaryBuffer(res.Buffer);

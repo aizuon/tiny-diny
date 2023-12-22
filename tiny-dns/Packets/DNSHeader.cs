@@ -63,7 +63,7 @@ public record DNSHeader : ISerializable, IDeserializable<DNSHeader>
         flags.Write(RA, 1);
         flags.Write(Z, 3);
         flags.Write(RCode, 4);
-        buffer.WriteRaw(flags.Buffer);
+        buffer.WriteRaw(flags.Buffer.AsSpan());
 
         buffer.Write(Questions);
         buffer.Write(AnswerRRs);

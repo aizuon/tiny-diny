@@ -64,7 +64,7 @@ public record EDNSOption : ISerializable, IDeserializable<EDNSOption>
         buffer.Write(rdLength);
 
         foreach (var option in Options)
-            buffer.WriteRaw(option.Serialize().Buffer);
+            buffer.WriteRaw(option.Serialize().Buffer.AsSpan());
 
         return buffer;
     }

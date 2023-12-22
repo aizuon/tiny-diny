@@ -14,12 +14,12 @@ public record DNSQuery : ISerializable
 
         if (EDNSOption != null)
             Header.AdditionalRRs = 1;
-        buffer.WriteRaw(Header.Serialize().Buffer);
+        buffer.WriteRaw(Header.Serialize().Buffer.AsSpan());
 
-        buffer.WriteRaw(Question.Serialize().Buffer);
+        buffer.WriteRaw(Question.Serialize().Buffer.AsSpan());
 
         if (EDNSOption != null)
-            buffer.WriteRaw(EDNSOption.Serialize().Buffer);
+            buffer.WriteRaw(EDNSOption.Serialize().Buffer.AsSpan());
 
         return buffer;
     }

@@ -1,6 +1,8 @@
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
+using ArgumentOutOfRangeException = System.ArgumentOutOfRangeException;
 
 namespace TinyDNS.Serialization;
 
@@ -8,62 +10,113 @@ public class BinaryBuffer
 {
     private readonly object _mutex = new object();
 
+    private byte[] _buffer;
+
+    private uint _readOffset;
+
+    private uint _writeOffset;
+
     public BinaryBuffer()
     {
-        Buffer = Array.Empty<byte>();
+        _buffer = Array.Empty<byte>();
+        Capacity = 0;
+        Length = 0;
     }
 
     public BinaryBuffer(byte[] obj)
     {
-        Buffer = obj;
-        WriteOffset = (uint)obj.Length;
+        _buffer = obj;
+        _writeOffset = (uint)obj.Length;
+        Capacity = (uint)obj.Length;
+        Length = (uint)obj.Length;
     }
 
-    public byte[] Buffer { get; set; }
+    public ArraySegment<byte> Buffer
+    {
+        get
+        {
+            lock (_mutex)
+            {
+                return new ArraySegment<byte>(_buffer, 0, (int)Length);
+            }
+        }
+    }
 
-    public uint ReadOffset { get; set; }
-    public uint WriteOffset { get; set; }
+    public uint Length { get; private set; }
 
-    public unsafe void Write<T>(T obj) where T : unmanaged, IBinaryNumber<T>
+    public uint Capacity { get; private set; }
+
+    public uint ReadOffset
+    {
+        get => _readOffset;
+        set
+        {
+            if (value > Length)
+                throw new ArgumentOutOfRangeException();
+            _readOffset = value;
+        }
+    }
+
+    public uint WriteOffset
+    {
+        get => _writeOffset;
+        set
+        {
+            if (value > Length)
+                throw new ArgumentOutOfRangeException();
+            _writeOffset = value;
+        }
+    }
+
+    public void Write<T>(T obj) where T : unmanaged, IBinaryNumber<T>
     {
         lock (_mutex)
         {
-            uint length = (uint)Unsafe.SizeOf<T>();
-            GrowIfNeeded(length);
-            fixed (byte* b = Buffer)
-            {
-                obj = Mem.ToBigEndian(obj);
+            int length = Unsafe.SizeOf<T>();
+            GrowIfNeeded((uint)length);
 
-                System.Buffer.MemoryCopy(&obj, b + WriteOffset, Buffer.Length - WriteOffset, length);
+            var bufferSpan = _buffer.AsSpan((int)_writeOffset, length);
+            obj = Mem.ToBigEndian(obj);
+            MemoryMarshal.Write(bufferSpan, in obj);
+
+            _writeOffset += (uint)length;
+            Length = Math.Max(Length, _writeOffset);
+        }
+    }
+
+    public void WriteRaw<T>(Span<T> obj) where T : unmanaged, IBinaryNumber<T>
+    {
+        lock (_mutex)
+        {
+            int sizeOfT = Unsafe.SizeOf<T>();
+            uint length = (uint)obj.Length * (uint)sizeOfT;
+            GrowIfNeeded(length);
+
+            var targetSpan = new Span<byte>(_buffer, (int)_writeOffset, (int)length);
+
+            for (int i = 0; i < obj.Length; i++)
+            {
+                var value = Mem.ToBigEndian(obj[i]);
+                MemoryMarshal.Write(targetSpan.Slice(i * sizeOfT, sizeOfT), in value);
             }
 
-            WriteOffset += length;
+            _writeOffset += length;
+            Length = Math.Max(Length, _writeOffset);
         }
     }
 
-    public void WriteRaw<T>(T[] obj) where T : unmanaged, IBinaryNumber<T>
+    public void WriteString(string obj)
     {
         lock (_mutex)
         {
-            uint length = (uint)obj.Length * (uint)Unsafe.SizeOf<T>();
-            GrowIfNeeded(length);
+            int byteCount = Encoding.ASCII.GetByteCount(obj);
+            Write((byte)byteCount);
 
-            foreach (var o in obj)
-                Write(o);
-        }
-    }
+            GrowIfNeeded((uint)byteCount);
 
-    public void Write(string obj)
-    {
-        lock (_mutex)
-        {
-            byte[] ascii = Encoding.ASCII.GetBytes(obj);
-            Write((byte)ascii.Length);
-
-            GrowIfNeeded((uint)ascii.Length);
-
-            foreach (byte o in ascii)
-                Write(o);
+            Encoding.ASCII.GetBytes(obj, 0, obj.Length, _buffer, (int)_writeOffset);
+            _writeOffset += (uint)byteCount;
+            Length = Math.Max(Length, _writeOffset);
         }
     }
 
@@ -73,35 +126,27 @@ public class BinaryBuffer
         {
             string[] labels = obj.Split('.');
             foreach (string label in labels)
-                Write(label);
+                WriteString(label);
             Write((byte)0);
         }
     }
 
-    public unsafe T Read<T>() where T : unmanaged, IBinaryNumber<T>
+    public T Read<T>() where T : unmanaged, IBinaryNumber<T>
     {
         lock (_mutex)
         {
-            uint length = (uint)Unsafe.SizeOf<T>();
+            int length = Unsafe.SizeOf<T>();
 
-            uint finalOffset = ReadOffset + length;
-            if (Buffer.Length < finalOffset)
+            if (_buffer.Length < _readOffset + length)
                 throw new ArgumentOutOfRangeException();
 
-            var obj = T.Zero;
-            var o = &obj;
-            fixed (byte* b = Buffer)
-            {
-                byte* p = (byte*)o;
+            var bufferSpan = _buffer.AsSpan((int)_readOffset, length);
+            var value = MemoryMarshal.Read<T>(bufferSpan);
+            value = Mem.ToBigEndian(value);
 
-                System.Buffer.MemoryCopy(b + ReadOffset, p, length, length);
+            _readOffset += (uint)length;
 
-                obj = Mem.ToBigEndian(obj);
-            }
-
-            ReadOffset = finalOffset;
-
-            return obj;
+            return value;
         }
     }
 
@@ -109,17 +154,23 @@ public class BinaryBuffer
     {
         lock (_mutex)
         {
-            uint length = count * (uint)Unsafe.SizeOf<T>();
+            int sizeOfT = Unsafe.SizeOf<T>();
+            uint length = count * (uint)sizeOfT;
 
-            uint finalOffset = ReadOffset + length;
-            if (Buffer.Length < finalOffset)
+            if (_buffer.Length - _readOffset < length)
                 throw new ArgumentOutOfRangeException();
 
-            var obj = new T[count];
-            for (uint i = 0; i < count; i++)
-                obj[i] = Read<T>();
+            var result = new T[count];
+            var byteSpan = new Span<byte>(_buffer, (int)_readOffset, (int)length);
 
-            return obj;
+            for (int i = 0; i < count; i++)
+            {
+                var value = MemoryMarshal.Read<T>(byteSpan[(i * sizeOfT)..]);
+                result[i] = Mem.ToBigEndian(value);
+            }
+
+            _readOffset += length;
+            return result;
         }
     }
 
@@ -129,17 +180,11 @@ public class BinaryBuffer
         {
             byte size = Read<byte>();
 
-            uint length = (uint)(size * sizeof(byte));
-
-            uint finalOffset = ReadOffset + length;
-            if (Buffer.Length < finalOffset)
+            if (_buffer.Length < _readOffset + size)
                 throw new ArgumentOutOfRangeException();
 
-            byte[] ascii = new byte[length];
-            for (uint i = 0; i < size; i++)
-                ascii[i] = Read<byte>();
-
-            string obj = Encoding.ASCII.GetString(ascii);
+            string obj = Encoding.ASCII.GetString(_buffer, (int)_readOffset, size);
+            _readOffset += size;
 
             return obj;
         }
@@ -188,14 +233,15 @@ public class BinaryBuffer
 
     private void GrowIfNeeded(uint writeLength)
     {
-        uint finalLength = WriteOffset + writeLength;
-        bool resizeNeeded = Buffer.Length <= finalLength;
-
-        if (resizeNeeded)
+        uint requiredLength = WriteOffset + writeLength;
+        if (Capacity < requiredLength)
         {
-            byte[] tmp = Buffer;
-            Array.Resize(ref tmp, (int)finalLength);
-            Buffer = tmp;
+            uint newCapacity = Math.Max(Capacity * 2, requiredLength);
+            byte[] tmp = _buffer;
+            Array.Resize(ref tmp, (int)newCapacity);
+            _buffer = tmp;
+            Length = requiredLength;
+            Capacity = newCapacity;
         }
     }
 }
