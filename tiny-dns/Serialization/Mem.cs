@@ -1,3 +1,4 @@
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -5,7 +6,7 @@ namespace TinyDNS.Serialization;
 
 public static class Mem
 {
-    public static unsafe T ToBigEndian<T>(T obj) where T : unmanaged
+    public static unsafe T ToBigEndian<T>(T obj) where T : unmanaged, IBinaryNumber<T>
     {
         if (!BitConverter.IsLittleEndian)
             return obj;
